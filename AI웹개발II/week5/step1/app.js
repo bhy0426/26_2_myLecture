@@ -56,7 +56,7 @@ app.get('/error', (req, res, next) => {
 // input의 msg 키를 가져옴
 // POST, /info/message
 app.post('/info/message', (req, res, next) => {
-    const msg = `Info-Message: ${   .msg}`;
+    const msg = `Info-Message: ${req.body.msg}`;
     console.log(msg);
     res.send(msg);
 });
