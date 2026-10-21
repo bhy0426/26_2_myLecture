@@ -1,11 +1,14 @@
-let v = 0;
+let v = 10;
 
-setTimeout(() => setInterval(() => v += 1, 1500), 1000);
+setInterval(
+    () => setInterval(() => v -= 1, 200), 
+    200
+);
 
 const promise = new Promise(resolve => {
-    queueMicrotask(() => setTimeout(() => resolve(), 1500));
+    process.nextTick(() => setTimeout(() => resolve(), 200));
 })
-.then(() => v += 5)
-.then(() => v *= 2);
+.then(() => v -= 3)
+.then(() => v -= 2);
 
-setTimeout(() => console.log(v), 7000);
+setTimeout(() => console.log(v), 700);
