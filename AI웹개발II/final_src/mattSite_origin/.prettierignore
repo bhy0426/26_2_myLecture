@@ -1,0 +1,9 @@
+node_modules/
+.local/
+.git/
+package-lock.json
+.env
+.env.*
+*.sql
+*.mp4
+dist/

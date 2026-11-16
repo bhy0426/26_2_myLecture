@@ -1,0 +1,57 @@
+# 화면에서 서버까지 읽는 순서
+
+```text
+client/src/App.jsx               화면 주소 → React 페이지
+  pages/manager/                 회원 관리 · 가입/로그인 설정 · 메일 관리
+  pages/courses/                 강좌 목록 · 강좌 상세 · 강의 재생 · 관리자 편집
+  pages/RegisterPage.jsx         학생 가입
+  shared/                        회원 입력칸 · 세션 상태 · HTTP 요청
+src/app.js                       /api 주소 → Express 라우터
+  modules/auth/                  가입 · 로그인 · 소셜 연결 · 이메일 발송
+  modules/manager/               회원 · 항목 설정 · 발신자 등록
+  modules/courses/               강좌 · 하위 강의 · 시청 권한 · 업로드
+  modules/boards/ · info/ · user/ 공지 · Q&A · 내 정보
+src/models.js → src/database.js   Sequelize 모델 → MySQL
+tests/                           기능별 Mocha 테스트
+```
+
+## 수정하려는 기능에서 출발하기
+
+| 고치고 싶은 동작                | React에서 시작                                                                                                                       | 서버에서 이어 읽기                                                                                                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 회원 승인·역할·학생별 시청 기간 | [회원 선택](../client/src/pages/manager/MemberManager.jsx), [시청 권한](../client/src/pages/manager/StudentAccess.jsx)               | [관리 라우터](../src/modules/manager/routes.js) → [회원 서비스](../src/modules/manager/service.js)                                                                                           |
+| 가입·로그인 옵션                | [설정 스위치](../client/src/pages/manager/MemberSettings.jsx), [로그인 화면](../client/src/pages/LoginPage.jsx)                      | [회원 항목 정책](../src/modules/manager/member-fields.service.js)                                                                                                                            |
+| 가입 중복 확인과 인증코드       | [가입 화면](../client/src/pages/RegisterPage.jsx), [공통 입력과 중복 확인](../client/src/shared/MemberFields.jsx)                    | [인증 API](../src/modules/auth/routes.js) → [가입 서비스](../src/modules/auth/register.service.js)                                                                                           |
+| 발신자 교체                     | [메일 관리](../client/src/pages/manager/MailSettings.jsx)                                                                            | [메일 확인·적용](../src/modules/manager/mail.service.js) → [비공개 설정 저장](../src/modules/manager/mail-sender.store.js). 실제 발송은 [메일 전송](../src/modules/auth/mail.js)이 담당한다. |
+| 관리자에게 편집 버튼 표시       | [학생·원장 공용 강좌 페이지](../client/src/pages/courses/CoursesPage.jsx), [강좌 편집](../client/src/pages/courses/CourseEditor.jsx) | [강좌 라우터](../src/modules/courses/routes.js) → [강좌 서비스](../src/modules/courses/service.js)                                                                                           |
+| 영상 업로드·수정                | [강의 편집](../client/src/pages/courses/LectureEditor.jsx)                                                                           | [강의 라우터](../src/modules/courses/lectures.routes.js) → [강의 서비스](../src/modules/courses/lectures.service.js)                                                                         |
+| 영상 모듈 교체                  | [강의 시청 화면](../client/src/pages/courses/LecturePage.jsx) → [플레이어](../client/src/pages/courses/VideoPlayer.jsx)              | [권한 검사](../src/modules/courses/access.js) → [변환·미디어 파일](../src/modules/courses/video.js)                                                                                          |
+
+## 처음 따라갈 요청 하나
+
+**강좌 이름 수정**을 예로 든다. 원장님이 학생과 같은 강좌 상세에서 편집 모드를 켠다. `CourseEditor`에서 저장을 누르면 [공통 HTTP 함수](../client/src/shared/api.js)가 `PATCH /api/courses/:courseId`를 호출한다. 강좌 라우터는 [관리자 검사](../src/shared/helpers.js)를 거쳐 서비스에 요청값을 전달한다. 서비스가 [Course 모델](../src/models.js)로 저장하고 화면이 새 값을 읽는다. 학생에게는 편집 UI가 숨겨지며 같은 변경 API에도 권한 검사가 적용된다.
+
+하연이가 플레이어를 바꿀 때 [VideoPlayer.jsx](../client/src/pages/courses/VideoPlayer.jsx)의 `src`, `format`, `onError` 입력을 유지하면 나머지 화면에서 같은 방식으로 재생할 수 있다. 영상 공급자를 바꿀 때에도 학생에게 재생 주소를 발급하는 API의 시청 권한 검사를 유지한다.
+
+## 데이터 관계
+
+```mermaid
+erDiagram
+    roles ||--o{ users : "역할"
+    users ||--o{ kakao_accounts : "카카오 연결"
+    users ||--o{ google_accounts : "구글 연결"
+    courses ||--o{ lectures : "강좌 안의 강의"
+    users ||--o{ lecture_access : "학생별 허용"
+    lectures ||--o{ lecture_access : "허용된 강의"
+    users ||--o{ questions : "질문"
+    users ||--o{ boards : "공지"
+    users ||--o{ password_resets : "초기화 토큰"
+```
+
+member_fields는 사이트 전체의 회원 항목 정책이다. 회원별 권한과는 별개이며 가입·프로필·관리자 응답이 같은 설정을 읽는다.
+
+signup_codes는 가입 전 주소별 인증 정보를 보관한다. 회원은 코드 검증이 끝나야 users에 생기므로 이 테이블에는 회원 번호가 없다.
+
+## 강좌 아래에 강의 라우터를 연결하는 이유
+
+`courses/routes.js`의 `router.use('/:courseId/lectures', ...)`가 강의 Router를 연결한다. 따라서 주소는 `/api/courses/1/lectures/2`지만 코드는 강좌 함수와 강의 함수로 나뉜다. `mergeParams:true`로 상위 courseId를 전달하고 서버에서 해당 강의가 그 강좌에 속하는지도 검사한다.

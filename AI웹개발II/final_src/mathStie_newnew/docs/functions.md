@@ -1,0 +1,75 @@
+# 기능별 파일·함수 안내
+
+코드를 처음 읽을 때는 [코드 읽는 순서](code-map.md)부터 시작한다. 이 문서는 **어떤 동작을 바꾸려면 어디를 열어야 하는지** 찾을 때 쓴다. 요청 주소와 응답 형식은 [API 목록](API.md)에 있다.
+
+## 공통 요청 흐름
+
+1. 브라우저가 열 경로를 `App`에서 찾는다. `RequireUser`는 로그인이 필요한 화면을 감싸고, `AuthProvider`는 현재 사용자와 활성 회원 항목을 화면에 전달한다. [화면 진입점](../client/src/main.jsx) · [화면 경로](../client/src/App.jsx) · [로그인 상태](../client/src/shared/auth.jsx)
+2. 화면에서 `api(method, path, body)`를 호출하면 공통 함수가 `/api`를 붙여 요청한다. `useResource`는 조회와 새로고침, `useAction`은 버튼 작업의 진행·결과를 맡는다. [요청 함수](../client/src/shared/api.js) · [조회·저장 상태](../client/src/shared/hooks.js)
+3. Express가 주소를 기능별 라우터에 연결한다. `currentUser`는 세션에서 회원을 찾고 `requireLogin`, `requireAdmin`은 실제 API 접근을 검사한다. 각 라우터가 같은 폴더의 서비스 함수에 값을 넘기고, 서비스가 Sequelize 모델로 데이터를 읽거나 저장한다. [API 연결](../src/app.js) · [세션 확인](../src/middleware/session-user.js) · [공통 권한·입력 검사](../src/shared/helpers.js) · [DB 모델](../src/models.js)
+
+## 가입·로그인·내 정보
+
+| 바꾸려는 동작            | 읽을 함수                                                                                                                                                                                                                                        | 파일                                                                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 가입 방법 선택           | `RegisterPage`가 이메일 설정에 따라 `EmailRegistration` 또는 `SocialRegistration`을 표시한다. `sendCode`는 가입 인증번호를 요청하고, `submit`은 입력한 코드와 회원 정보를 제출한다.                                                              | [회원가입 화면](../client/src/pages/RegisterPage.jsx)                                                                                                                                        |
+| 입력값 옆 중복 확인      | `MemberFields`는 가입·내 정보·관리자 수정이 공유한다. 가입 시의 `RegistrationField`가 `check`로 현재 값을 조회하고, 값이 바뀌면 `clear`로 확인 결과를 지운다. `useRegistrationChecks`의 `requireChecks`가 제출 전 입력값과 확인한 값을 대조한다. | [공통 회원 입력칸](../client/src/shared/MemberFields.jsx)                                                                                                                                    |
+| 중복 조회와 가입 확정    | `checkAvailability`는 켠 항목 하나만 검사한다. `requestCode`는 인증번호를 보내고, `register`는 최종 값의 중복과 코드를 다시 확인한 뒤 승인 대기 회원을 생성한다.                                                                                 | [인증 라우터](../src/modules/auth/routes.js) · [가입 서비스](../src/modules/auth/register.service.js)                                                                                        |
+| 비밀번호 로그인·로그아웃 | `login`은 활성 로그인 항목과 승인 상태를 검사한다. `verifyPassword`·`hashPassword`는 비밀번호를 검증·저장하고, `loginSession`은 인증이 끝난 회원의 세션을 만든다.                                                                                | [로그인 화면](../client/src/pages/LoginPage.jsx) · [인증 서비스](../src/modules/auth/service.js) · [비밀번호](../src/modules/auth/password.js) · [세션](../src/modules/auth/session.js)      |
+| 복구와 초기화            | `recoveryStatus`·`reset`은 연결된 소셜 계정 인증이나 관리자 초기화 메일의 링크를 통해 새 비밀번호를 설정하는 흐름에 쓰인다. `requestAdminReset`은 관리자 요청을 처리한다.                                                                        | [비밀번호 변경 화면](../client/src/pages/ResetPage.jsx) · [복구 서비스](../src/modules/auth/service.js)                                                                                      |
+| 내 정보 읽기·수정        | `findUser`가 회원과 역할을 조회하고 `publicUser`가 공개 가능한 값을 고른다. `profileChanges`가 바뀐 값만 보내고 `edit`가 활성 항목을 검사해 저장한다.                                                                                            | [내 정보](../client/src/pages/ProfilePage.jsx) · [계정 조회](../src/modules/auth/account.js) · [내 정보 라우터](../src/modules/user/routes.js) · [저장 함수](../src/modules/user/service.js) |
+
+카카오·구글은 `createSocialService`의 `start`, `callback`, `register`를 공유한다. 한 제공자만 고칠 때는 해당 행에서 요청 주소·설정·외부 통신·계정 연결 순으로 읽는다. [공통 소셜 인증](../src/modules/auth/social.service.js)
+
+| 제공자 | 파일                                                                                                                                                                                                                                                                       |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 카카오 | [라우터](../src/modules/auth/kakao.routes.js) · [서비스 조립](../src/modules/auth/kakao.service.js) · [설정](../src/modules/auth/kakao.config.js) · [인증 코드 교환](../src/modules/auth/kakao.client.js) · [계정 연결 저장](../src/modules/auth/kakao.repository.js)      |
+| 구글   | [라우터](../src/modules/auth/google.routes.js) · [서비스 조립](../src/modules/auth/google.service.js) · [설정](../src/modules/auth/google.config.js) · [인증 코드 교환](../src/modules/auth/google.client.js) · [계정 연결 저장](../src/modules/auth/google.repository.js) |
+
+## 학원 관리
+
+`ManagerPage`의 `tabs`에 회원 관리, 가입·로그인 설정, 메일 관리가 등록돼 있다. 서버는 관리자 라우터 전체에 `requireAdmin`을 적용한다. [탭과 화면 연결](../client/src/pages/manager/ManagerPage.jsx) · [관리자 라우터](../src/modules/manager/routes.js)
+
+| 바꾸려는 동작            | 읽을 함수                                                                                                                                                                                                                                                     | 파일                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 회원 승인·수정·역할      | `MemberManager`에서 회원을 선택한다. 서버의 `changeStatus`, `editUser`, `changeRole`이 해당 작업을 처리한다. 역할 자체의 추가·수정·삭제는 `RoleManager`에서 시작한다.                                                                                         | [회원 관리](../client/src/pages/manager/MemberManager.jsx) · [역할 관리](../client/src/pages/manager/RoleManager.jsx) · [관리 서비스](../src/modules/manager/service.js) |
+| 학생별 강의 시청 권한    | `StudentAccess`가 강좌·강의를 고르고 `access`로 요청한다. 서버에서는 `listAccess`, `grantAccess`, `revokeAccess`를 따라간다.                                                                                                                                  | [시청 권한 화면](../client/src/pages/manager/StudentAccess.jsx) · [권한 서비스](../src/modules/manager/service.js)                                                       |
+| 가입·로그인 항목 스위치  | `editFields`는 켠 항목을 저장한다. `publicConfiguration`은 화면에 활성 항목을 제공하고 `validateFields`·`selectFields`는 서버의 입력과 응답에 같은 설정을 적용한다. `ensureFieldDefaults`는 새 DB에 기본 설정 행을 채운다.                                    | [설정 화면](../client/src/pages/manager/MemberSettings.jsx) · [회원 항목 규칙](../src/modules/manager/member-fields.service.js)                                          |
+| 발신 계정 등록           | `MailSettings`의 `sendCode`와 `confirmSender`가 확인 메일 발송과 인증번호 제출을 맡는다. 서버의 `status`로 현재 계정을 확인하고, `requestVerification`으로 새 계정의 수신함에 코드를 보내고, `confirm`이 같은 관리자 세션의 코드를 검증한 뒤 계정을 교체한다. | [메일 관리 화면](../client/src/pages/manager/MailSettings.jsx) · [발신자 등록 서비스](../src/modules/manager/mail.service.js)                                            |
+| 발신 계정 보관·실제 발송 | `writeSender`·`readSender`가 서버의 비공개 파일을 암호화해 저장하고 읽는다. `sendSenderCode`는 등록할 주소, `sendSignupCode`는 가입자, `sendReset`은 초기화 대상에게 보낸다. 세 함수 모두 `deliver`로 발송한다.                                               | [발신 설정 저장](../src/modules/manager/mail-sender.store.js) · [메일 발송](../src/modules/auth/mail.js)                                                                 |
+
+## 강좌·영상 편집과 재생
+
+학생과 원장님은 같은 `CoursesPage`를 연다. 강좌 편집 UI를 바꾸는 일과 학생에게 시청 권한을 주는 일은 시작 위치가 다르다. 시청 권한은 위의 `StudentAccess`에서 변경한다.
+
+| 바꾸려는 동작       | 읽을 함수                                                                                                                                                                                                                                                             | 파일                                                                                                                                                                                                                           |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 강좌 목록·상세      | `CourseList`와 `CourseDetail`이 목록과 상세를 그린다. `CoursesPage`는 로그인한 회원의 `canManage`와 편집 모드에 따라 편집기를 덧붙인다.                                                                                                                               | [같이 쓰는 강좌 화면](../client/src/pages/courses/CoursesPage.jsx)                                                                                                                                                             |
+| 강좌 등록·수정·삭제 | `CourseEditor.save`는 같은 입력 폼에서 새 강좌는 POST, 기존 강좌는 PATCH로 보낸다. `remove`는 삭제 요청을 보낸다. 서버에서는 `create`, `edit`, `remove`가 처리한다.                                                                                                   | [강좌 편집기](../client/src/pages/courses/CourseEditor.jsx) · [강좌 라우터](../src/modules/courses/routes.js) · [강좌 서비스](../src/modules/courses/service.js)                                                               |
+| 강의·영상 편집      | `LectureEditor` 안의 `save`는 제목·순서·공개 여부·파일을 보낸다. `convert`는 변환을 다시 요청하고 `remove`는 강의를 삭제한다. 파일 수신은 `upload`, 형식 확인은 `checkVideo`, HLS 변환 예약은 `queueConversion`이 맡는다.                                             | [영상 편집기](../client/src/pages/courses/LectureEditor.jsx) · [강의 라우터](../src/modules/courses/lectures.routes.js) · [업로드 처리](../src/modules/courses/upload.js) · [변환 처리](../src/modules/courses/video.js)       |
+| 영상 재생 모듈 연결 | `LecturePage`가 재생 API에 요청하면 `playback`이 재생 주소와 형식을 돌려준다. `VideoPlayer`가 이 값을 받아 화면에 재생한다. 원본 파일 요청은 `original`, HLS 조각 요청은 `hlsFile`이 맡고, `getCourse`·`getLecture`는 공개 상태와 학생의 유효한 시청 권한을 검사한다. | [시청 화면](../client/src/pages/courses/LecturePage.jsx) · [플레이어](../client/src/pages/courses/VideoPlayer.jsx) · [강의 서비스](../src/modules/courses/lectures.service.js) · [권한 검사](../src/modules/courses/access.js) |
+
+## 공지와 Q&A
+
+- **공지** — `BoardsPage`가 조회와 관리자 작성·수정 폼을 공유한다. `create`·`edit`은 내용을 저장하고, `pin`은 상단 고정, `popup`은 팝업 공지 조회를 처리한다. `PopupNotice`가 해당 공지를 보여 준다. [공지 화면](../client/src/pages/BoardsPage.jsx) · [팝업](../client/src/shared/PopupNotice.jsx) · [공지 라우터](../src/modules/boards/routes.js) · [공지 서비스](../src/modules/boards/service.js)
+- **Q&A** — `InfoPage`의 `Questions`에서 질문과 답변을 편집한다. 서버의 `edit`·`remove`는 질문을, `answer`는 원장님의 답변을 처리한다. [소개·Q&A 화면](../client/src/pages/InfoPage.jsx) · [Q&A 라우터](../src/modules/info/routes.js) · [Q&A 서비스](../src/modules/info/service.js)
+
+## 공통 화면·서버 실행·데이터
+
+- `Layout`은 메뉴, `Page`는 페이지 제목과 상태, `Field`·`Form`·`DeleteButton`은 여러 화면의 입력과 삭제 확인에 쓰인다. `memberLabel`은 활성 회원 항목 중 어떤 값을 이름으로 표시할지 정한다. [공통 화면 부품](../client/src/shared/components.jsx) · [회원 표시 이름](../client/src/shared/memberLabel.mjs)
+- `start`가 서버를 시작하고 `configureFrontend`가 React 화면을 연결한다. `isConnectionLimit`은 동시 DB 연결 한도를 판별하고 `status`는 DB 상태를 점검한다. [서버 시작](../src/server.js) · [화면 제공](../src/frontend.js) · [DB 연결](../src/database.js) · [상태 점검](../src/health.js)
+- `initialize`가 기본 역할·최초 관리자·회원 항목을 준비한다. `migrate`는 기존 DB 구조를 모델에 맞춘다. 전용 로컬 MySQL과 Nginx 실행은 각각의 스크립트에서 확인한다. [DB 초기화](../scripts/init-db.js) · [스키마 변경](../database/migrate.js) · [로컬 DB](../scripts/local-db.js) · [영상 프록시](../scripts/nginx.js)
+
+## Mocha 테스트를 찾는 법
+
+전체 검사는 `npm test`로 실행한다. 기능 하나를 수정할 때는 아래의 전용 명령으로도 확인할 수 있다. 각 명령과 파일의 연결은 [package.json](../package.json)에 있다.
+
+| 명령                                         | 주로 확인하는 동작                                                    | 테스트                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `npm run test:api`                           | 로그인·회원 관리, 강좌·강의 권한, 공지, Q&A                           | [핵심 API](../tests/api.test.js)                                             |
+| `npm run test:registration`                  | 가입 항목별 중복 확인, 비활성 항목, 먼저 다른 회원이 값을 사용한 경우 | [가입 중복 검사](../tests/registration-checks.test.js)                       |
+| `npm run test:mail`                          | 발신 계정 변경 권한, 메일 확인 전후의 발신자, 인증 실패와 설정 복구   | [관리자 메일](../tests/manager-mail.test.js)                                 |
+| `npm run test:features`                      | 가입·메일 인증, DB 마이그레이션, FFmpeg 변환과 Nginx 재생             | [연동 기능](../tests/features.test.js)                                       |
+| `npm run test:kakao` · `npm run test:social` | 카카오 인증, 구글·카카오 계정 복구, 회원 항목 스위치                  | [카카오](../tests/kakao.test.js) · [소셜 인증·설정](../tests/social.test.js) |
+
+통합 테스트는 로컬 테스트 DB에 시나리오별 자료를 준비한다. `client`는 테스트 회원의 쿠키를 유지하고, `openMailbox`·`registerByEmail`은 가입용 시험 편지함을 사용한다. [테스트 환경](../tests/database-env.js) · [초기 자료](../tests/seed.js) · [자료 초기화](../tests/reset-data.js) · [요청 도구](../tests/http-client.js) · [가입 메일 도구](../tests/signup-mail.js)
